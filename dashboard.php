@@ -36,11 +36,49 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'add')
     }
 }
 
+// Update
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'update') {
+    $id      = (int)($_POST['id']      ?? 0);
+    $name    = trim($conn->real_escape_string($_POST['name']   ?? ''));
+    $age     = (int)($_POST['age']    ?? 0);
+    $gender  = $conn->real_escape_string($_POST['gender']  ?? '');
+    $email   = trim($conn->real_escape_string($_POST['email']  ?? ''));
+    $address = trim($conn->real_escape_string($_POST['address'] ?? ''));
+
+    if ($id > 0 && $name && $age > 0 && $gender && $email && $address) {
+        $sql = "UPDATE `$table` SET 
+                Name = '$name', 
+                Age = $age, 
+                Gender = '$gender', 
+                Email = '$email', 
+                Address = '$address' 
+                WHERE ID = $id";
+        if ($conn->query($sql)) {
+            $success = "Student updated successfully!";
+        } else {
+            $error = "Update failed: " . $conn->error;
+        }
+    } else {
+        $error = "All fields are required.";
+    }
+}
+
 // Delete
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'delete') {
     $id = (int)($_POST['id'] ?? 0);
     if ($id > 0) {
         $conn->query("DELETE FROM `$table` WHERE ID = $id");
+        $success = "Student deleted successfully!";
+    }
+}
+
+// Fetch for Edit
+$editData = null;
+if (isset($_GET['edit'])) {
+    $editId = (int)$_GET['edit'];
+    $res = $conn->query("SELECT * FROM `$table` WHERE ID = $editId");
+    if ($res && $res->num_rows > 0) {
+        $editData = $res->fetch_assoc();
     }
 }
 
@@ -184,7 +222,33 @@ $students = $res ? $res->fetch_all(MYSQLI_ASSOC) : [];
     box-shadow: 0 4px 12px var(--danger-g);
   }
 
-  .submit-row { display: flex; justify-content: flex-end; margin-top: 1.1rem; }
+  .btn-edit {
+    background: transparent;
+    border: 1px solid var(--accent);
+    color: var(--accent);
+    padding: .38rem .75rem;
+    font-size: .8rem;
+  }
+  .btn-edit:hover {
+    background: var(--accent);
+    color: #fff;
+    box-shadow: 0 4px 12px var(--glow);
+  }
+
+  .btn-cancel {
+    background: transparent;
+    border: 1px solid var(--muted);
+    color: var(--muted);
+    text-decoration: none;
+    display: inline-flex;
+    align-items: center;
+  }
+  .btn-cancel:hover {
+    background: var(--muted);
+    color: #fff;
+  }
+
+  .submit-row { display: flex; justify-content: flex-end; gap: .75rem; margin-top: 1.1rem; }
 
   /* ── Table ── */
   .tbl-wrap { overflow-x: auto; }
@@ -239,9 +303,12 @@ $students = $res ? $res->fetch_all(MYSQLI_ASSOC) : [];
 </head>
 <body>
 
-<!-- Form Insert -->
-<div class="card">
-  <div class="card-title"><span class="dot"></span> Add New Student</div>
+<!-- Form Insert/Update -->
+<div class="card" id="studentForm">
+  <div class="card-title">
+    <span class="dot"></span> 
+    <?= $editData ? 'Edit Student' : 'Add New Student' ?>
+  </div>
 
   <?php if ($success): ?>
     <div class="alert alert-success">✓ <?= $success ?></div>
@@ -251,46 +318,58 @@ $students = $res ? $res->fetch_all(MYSQLI_ASSOC) : [];
   <?php endif; ?>
 
   <form method="POST" action="dashboard.php">
-    <input type="hidden" name="action" value="add" />
+    <input type="hidden" name="action" value="<?= $editData ? 'update' : 'add' ?>" />
+    <?php if ($editData): ?>
+      <input type="hidden" name="id" value="<?= (int)$editData['ID'] ?>" />
+    <?php endif; ?>
+    
     <div class="form-grid">
 
       <div class="fg">
         <label for="name">Full Name</label>
         <input type="text" id="name" name="name"
+               value="<?= htmlspecialchars($editData['Name'] ?? '') ?>"
                placeholder="e.g. Sombath" required />
       </div>
 
       <div class="fg">
         <label for="age">Age</label>
         <input type="number" id="age" name="age"
+               value="<?= (int)($editData['Age'] ?? '') ?: '' ?>"
                min="1" max="120" placeholder="e.g. 20" required />
       </div>
 
       <div class="fg">
         <label for="gender">Gender</label>
         <select id="gender" name="gender" required>
-          <option value="" disabled selected>Select…</option>
-          <option value="Male">Male</option>
-          <option value="Female">Female</option>
-          <option value="Other">Other</option>
+          <option value="" disabled <?= !$editData ? 'selected' : '' ?>>Select…</option>
+          <option value="Male" <?= ($editData['Gender'] ?? '') === 'Male' ? 'selected' : '' ?>>Male</option>
+          <option value="Female" <?= ($editData['Gender'] ?? '') === 'Female' ? 'selected' : '' ?>>Female</option>
+          <option value="Other" <?= ($editData['Gender'] ?? '') === 'Other' ? 'selected' : '' ?>>Other</option>
         </select>
       </div>
 
       <div class="fg">
         <label for="email">Email</label>
         <input type="email" id="email" name="email"
+               value="<?= htmlspecialchars($editData['Email'] ?? '') ?>"
                placeholder="e.g. username@gmail.com" required />
       </div>
 
       <div class="fg full">
         <label for="address">Address</label>
         <textarea id="address" name="address"
-                  placeholder="e.g. Phnom Penh" required></textarea>
+                  placeholder="e.g. Phnom Penh" required><?= htmlspecialchars($editData['Address'] ?? '') ?></textarea>
       </div>
 
     </div>
     <div class="submit-row">
-      <button type="submit" class="btn btn-add">Add Student</button>
+      <?php if ($editData): ?>
+        <a href="dashboard.php" class="btn btn-cancel">Cancel</a>
+        <button type="submit" class="btn btn-add">Update Student</button>
+      <?php else: ?>
+        <button type="submit" class="btn btn-add">Add Student</button>
+      <?php endif; ?>
     </div>
   </form>
 </div>
@@ -344,12 +423,15 @@ $students = $res ? $res->fetch_all(MYSQLI_ASSOC) : [];
             <td><?= $s['Email'] ?></td>
             <td><?= $s['Address'] ?></td>
             <td>
-              <form method="POST" action="dashboard.php"
-                onsubmit="return confirm('Delete student #<?= (int)$s['ID'] ?>?')">
-                <input type="hidden" name="action" value="delete" />
-                <input type="hidden" name="id"     value="<?= (int)$s['ID'] ?>" />
-                <button type="submit" class="btn btn-del">Delete</button>
-              </form>
+              <div style="display: flex; gap: .5rem;">
+                <a href="dashboard.php?edit=<?= (int)$s['ID'] ?>#studentForm" class="btn btn-edit">Edit</a>
+                <form method="POST" action="dashboard.php"
+                  onsubmit="return confirm('Delete student #<?= (int)$s['ID'] ?>?')">
+                  <input type="hidden" name="action" value="delete" />
+                  <input type="hidden" name="id"     value="<?= (int)$s['ID'] ?>" />
+                  <button type="submit" class="btn btn-del">Delete</button>
+                </form>
+              </div>
             </td>
           </tr>
           <?php endforeach; ?>
